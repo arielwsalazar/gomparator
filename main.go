@@ -4,16 +4,17 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"time"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/ecampolo/gomparator/internal/pipeline"
 	"github.com/ecampolo/gomparator/internal/platform/http"
 	"github.com/ecampolo/gomparator/internal/stages"
 	"github.com/urfave/cli"
 	"go.uber.org/ratelimit"
-	"io"
-	"io/ioutil"
-	"os"
-	"time"
 )
 
 func init() {
@@ -74,6 +75,10 @@ func main() {
 			Value: http.DefaultConnections,
 			Usage: "max open idle connections per target host",
 		},
+		cli.BoolFlag{
+			Name:  "stealth-mode",
+			Usage: "display progress bar",
+		},
 	}
 
 	app.Action = Action
@@ -90,6 +95,7 @@ type options struct {
 	workers        int
 	rateLimit      int
 	statusCodeOnly bool
+	stealthMode    bool
 }
 
 func Action(cli *cli.Context) {
@@ -119,8 +125,12 @@ func Action(cli *cli.Context) {
 		log.Fatal(err)
 	}
 
-	bar := stages.NewProgressBar(lines)
-	bar.Start()
+	var bar *stages.ProgressBar
+
+	if !opts.stealthMode {
+		bar = stages.NewProgressBar(lines)
+		bar.Start()
+	}
 
 	reader := stages.NewReader(file, opts.hosts)
 	producer := stages.NewProducer(opts.workers, headers,
@@ -129,7 +139,10 @@ func Action(cli *cli.Context) {
 	p := pipeline.New(reader, producer, ctx, comparator)
 
 	p.Run()
-	bar.Stop()
+
+	if !opts.stealthMode {
+		bar.Stop()
+	}
 }
 
 func createContext(opts *options) (context.Context, context.CancelFunc) {
@@ -193,6 +206,7 @@ func parseFlags(cli *cli.Context) *options {
 	opts.workers = cli.Int("workers")
 	opts.rateLimit = cli.Int("ratelimit")
 	opts.statusCodeOnly = cli.Bool("status-code-only")
+	opts.stealthMode = cli.Bool("stealth-mode")
 	return opts
 }
 
